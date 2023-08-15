@@ -51,3 +51,175 @@ def add_logo_to_heatmap(heatmap_data, logo_image):
 
 # Call the custom function to create the combined plot
 add_logo_to_heatmap(heatmap_data, logo_image)
+
+
+
+################################################################################################################################################
+
+import os
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+
+project_dir = "drive/My Drive/nflfastR-data"
+szn_folders = os.listdir(f"{project_dir}")
+print(szn_folders)
+
+in_dir = os.listdir(f"{project_dir}/{szn_folders[0]}")
+print(in_dir)
+
+target_seasons = [x for x in szn_folders
+                  if ('2019' in x) |
+                  ('2020' in x) |
+                  ('2021' in x) |
+                  ('2022' in x)]
+
+data_files = ([f"""{project_dir}/{data_folder}/{os.listdir(f"{project_dir}/{data_folder}")[0]}"""
+               for data_folder in target_seasons])
+
+print(data_files)
+
+df = pd.DataFrame()
+
+for fn in data_files:
+  df = df.append(pd.read_csv(fn))
+
+df = df.reset_index(drop=True)
+print(df.shape)
+
+#(197407, 372)#
+df.columns.values
+
+qb_predictive_stats = ['season', 'passer_id', 'passer', 'pass', 'pass_attempt', 'shotgun', 'qb_hit', 'qb_scramble', 'penalty_yards', 'home_timeouts_remaining',
+            'complete_pass', 'interception', 'qb_epa','drive_play_count','fumble',
+            'sack', 'yards_gained', 'pass_touchdown']
+qb_groupie = ['season', 'passer_id', 'passer']
+
+
+qb_df = (df
+         .loc[:, qb_predictive_stats]
+         .groupby(qb_groupie,
+                  as_index=False)
+         .sum())
+qb_df.sample(10)
+
+
+for y in ['yards_gained', 'pass_attempt', 'qb_epa', 'shotgun', 'qb_hit', 'drive_play_count', 'qb_scramble','penalty_yards','home_timeouts_remaining','fumble',
+          'pass', 'interception','sack']:
+  sns.regplot(data=qb_df, x='pass_touchdown', y=y)
+  plt.title(f"pass touchdowns and {y}")
+  plt.show()
+
+
+
+_df = qb_df.copy()
+_df['season'] = _df['season'].add(1)
+
+new_qb_df = (qb_df.merge(_df,
+                         on=['season', 'passer_id','passer'],
+                         suffixes=('','_prev'),
+                         how='left'))
+new_qb_df.sample(10)
+
+for y in ['pass_touchdown_prev','yards_gained_prev',
+          'complete_pass_prev', 'pass_prev',
+          'interception_prev','sack_prev', 'qb_hit_prev','shotgun_prev', 'qb_epa_prev', 'qb_scramble_prev','penalty_yards_prev','home_timeouts_remaining_prev','fumble_prev']:
+  sns.regplot(data=new_qb_df, x='pass_touchdown', y=y)
+  plt.title(f"pass touchdowns and {y}")
+  plt.show()
+#####
+
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_squared_error
+from scipy.stats import pearsonr
+
+new_qb_df.sample(10)
+
+###
+
+features = ['pass_prev', 'complete_pass_prev',
+            'interception_prev', 'sack_prev',
+            'yards_gained_prev', 'pass_touchdown_prev','pass_attempt_prev', 'qb_epa_prev', 'qb_hit_prev','drive_play_count_prev','qb_scramble_prev','penalty_yards_prev','home_timeouts_remaining','fumble_prev']
+target = 'pass_touchdown'
+
+model_data = (new_qb_df
+              .dropna(subset=features+[target]))
+
+# train on 2020 data
+train_data = (model_data
+              .loc[model_data['season']==2021])
+
+# test on 2021 data (data the model hasn't seen)
+test_data = (model_data
+             .loc[model_data['season']==2022])
+
+model = LinearRegression()
+
+model.fit(train_data.loc[:, features],
+          train_data[target])
+
+preds = model.predict(test_data.loc[:, features])
+preds = pd.Series(preds, index=test_data.index)
+
+test_data['preds'] = preds
+
+# Let's run some basic statistics to examine the
+# quality of the prediction
+
+rmse = mean_squared_error(test_data['pass_touchdown'], test_data['preds'])**0.5
+r2 = pearsonr(test_data['pass_touchdown'], test_data['preds'])[0]**2
+print(f"rmse: {rmse}\nr2: {r2}")
+
+
+sns.regplot(data=test_data, x='pass_touchdown', y='preds')
+plt.title('Pass_touchdown predictions in 2023')
+plt.show()
+
+
+#####
+test_data.loc[:, ['season', 'passer_id', 'passer', 'pass_touchdown', 'preds']].sort_values('pass_touchdown', ascending=False).head()
+
+###
+
+
+# Sample data (replace with your own data)
+data = test_data.loc[:, ['season', 'passer_id', 'passer', 'pass_touchdown', 'preds']].sort_values('pass_touchdown', ascending=False).head(60)
+players = data['passer']
+preds = data['preds']
+
+# Players to exclude from the graph
+excluded_players = ['T.Brady', 'D.Mills', 'J.Brissett', 'C.Rush', 'J.Love', 'D.Henry', 'J.Jefferson', 'B.Gabbert','J.Eason','T.Boyle','B.Hoyer','J.Johnson','J.Wolford','T.Taylor','N.Mullens'
+,'S.Darnold','Z.Wilson','J.Flacco',' T.Huntley','M.Trubisky', 'T.Bridgewater', 'J.Winston', 'M.White', 'P.Walker','G.Minshew II', 'D.Blough','K.Allen','B.Rypien','C.Henne', 'T.Hill', 'T.Siemian']  # Replace with the players you want to excludee
+
+# Filter out excluded players
+filtered_players = players[~players.isin(excluded_players)]
+filtered_preds = preds[~players.isin(excluded_players)]
+
+# Create a bar plot
+fig, ax = plt.subplots(figsize=(12, 8))
+x = np.arange(len(filtered_players))
+bar_width = 0.4
+
+background_image = plt.imread('/content/DDLogo.png')  # Replace 'background_image.png' with the path to your image
+ax.imshow(background_image, aspect='auto', extent=(.5, len(filtered_players), .5, max(filtered_preds)), alpha=0.2)
+
+# Plot the predicted touchdowns as bars
+bars = ax.bar(x + bar_width/2, filtered_preds, bar_width, label='Predicted Pass Touchdowns')
+
+# Add data labels to the bars
+for bar, pred in zip(bars, filtered_preds):
+    ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.2, f'{pred:.2f}', ha='center', fontsize=11)
+
+# Customize the plot
+ax.set_xticks(x)
+ax.set_xticklabels(filtered_players, rotation='vertical', fontsize=10)
+ax.set_xlabel('Players')
+ax.set_ylabel('Pass Touchdowns')
+ax.set_title('2023 Projected Pass Touchdowns for QB\n RMSE: 4.88 | R^2: .850')
+
+ax.legend()
+
+plt.tight_layout()
+plt.show()
