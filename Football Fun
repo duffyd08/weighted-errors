@@ -1,0 +1,53 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+import nfl_data_py as nfl
+from matplotlib.gridspec import GridSpec
+
+# Load the NFL PBP data for the year 2018 and relevant columns
+years = [2020]
+columns = ['passer_player_name', 'pass_location', 'air_yards', 'pass_length']  # Include 'pass_length'
+pbp_data = nfl.import_pbp_data(years, columns=columns)
+
+# Specify the player you want to analyze
+specific_player = 'A.Rodgers'  # Replace with the desired player's name
+
+# Filter the data for the specific player
+player_data = pbp_data[pbp_data['passer_player_name'] == specific_player]
+
+# Group the player data by pass_location, pass_length, and calculate mean air_yards
+grouped_data = player_data.groupby(['pass_location', 'pass_length'])['air_yards'].mean().reset_index()
+
+# Pivot the data to create a heatmap
+heatmap_data = grouped_data.pivot_table(index='pass_location', columns='pass_length', values='air_yards', aggfunc='mean')
+
+# Load the logo image
+logo_image = plt.imread('/content/DDLogo.png')  # Replace with the actual logo image path
+
+# Create a custom function to combine the logo and heatmap
+def add_logo_to_heatmap(heatmap_data, logo_image):
+    fig = plt.figure(figsize=(12, 8))
+    gs = GridSpec(1, 2, width_ratios=[8, 1])  # Divide the figure into 2 columns with different widths
+    
+    # Create the heatmap overlay
+    ax_heatmap = plt.subplot(gs[0])
+    sns.heatmap(heatmap_data, cmap='YlOrRd', annot=True, fmt=".1f", linewidths=0.5, ax=ax_heatmap)
+
+    # Calculate the logo position on the plot
+    logo_x = 0.2  # Adjust the x-coordinate of the logo
+    logo_y = 0.2  # Adjust the y-coordinate of the logo
+    logo_width = 0.15  # Adjust the logo size as needed
+    
+    # Add the logo to the plot
+    ax_logo = plt.subplot(gs[1])
+    ax_logo.imshow(logo_image)
+    ax_logo.axis('off')  # Turn off axis for the logo subplot
+    
+    plt.suptitle(f'Average Air Yards Heatmap for {specific_player} (2020) During MVP Season')
+    plt.xlabel('Pass Length')
+    plt.ylabel('Pass Location')
+    
+    plt.show()
+
+# Call the custom function to create the combined plot
+add_logo_to_heatmap(heatmap_data, logo_image)
